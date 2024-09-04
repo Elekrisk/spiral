@@ -5,6 +5,6 @@ edition = "2021"
 
 [dependencies]
 ropey = "1"
-mlua = { version = "0.9", features = ["luau"]}
+mlua = { version = "0.9", features = ["luau", "vendored"]}
 log = "0.4"
 anyhow = "1"
