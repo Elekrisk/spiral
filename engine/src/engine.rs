@@ -83,7 +83,9 @@ impl Engine {
         let buffer_id = buffer.id;
         self.buffers.insert(buffer_id, buffer);
 
-        self.create_view(buffer_id)
+        let view = self.create_view(buffer_id);
+        self.active_view = view;
+        view
     }
 
     pub fn get_open_buffers(&self) -> impl Iterator<Item = BufferId> + '_ {
