@@ -1,3 +1,5 @@
+#![feature(panic_update_hook)]
+
 use std::{cell::RefCell, io::stdout, path::PathBuf, rc::Rc, time::Duration};
 
 use clap::Parser;
@@ -21,17 +23,17 @@ pub struct Options {
 }
 
 pub struct Frontend {
-    engine: Rc<RefCell<Engine>>,
+    engine: Engine,
     exit: bool,
 }
 
 impl Frontend {
     fn handle_events(&mut self) {
-        if event::poll(Duration::ZERO).unwrap() {
+        if event::poll(Duration::from_millis(100)).unwrap() {
             match event::read().unwrap() {
                 event::Event::Key(key) => match key.code {
                     KeyCode::Char('q') if key.modifiers == KeyModifiers::CONTROL => self.exit = true,
-                    KeyCode::Char(other) => self.engine.borrow_mut().key_event(other),
+                    KeyCode::Char(other) => self.engine.key_event(other),
                     _ => {}
                 },
                 _ => {}
@@ -40,14 +42,13 @@ impl Frontend {
     }
 
     fn draw(&self, frame: &mut Frame) {
-        let e = self.engine.borrow();
-        let active_view = e.active_view();
-        let view = e.view(active_view).unwrap();
-        let buffer = e.buffer(view.buffer).unwrap();
+        let active_view = self.engine.active_view();
+        let view = self.engine.view(active_view).unwrap();
+        let buffer = self.engine.buffer(view.buffer).unwrap();
         frame.render_widget(
             ViewWidget {
-                view,
-                buffer,
+                view: &view,
+                buffer: &buffer,
                 selections: &view.selections,
             },
             frame.area(),
@@ -87,12 +88,13 @@ impl<'a> Widget for ViewWidget<'a> {
         }
 
         for selection in self.selections {
+            log::error!("{selection:?}");
             let start_line = self.buffer.contents.char_to_line(selection.start);
-            let mut start_col = self.buffer.contents.line_to_char(start_line);
+            let mut start_col = selection.start - self.buffer.contents.line_to_char(start_line);
             let mut rel_start_line = start_line as isize - self.view.scroll as isize;
 
-            let end_line = self.buffer.contents.char_to_line(selection.start);
-            let mut end_col = self.buffer.contents.line_to_char(start_line);
+            let end_line = self.buffer.contents.char_to_line(selection.end);
+            let mut end_col = selection.end - self.buffer.contents.line_to_char(end_line);
             let mut rel_end_line = end_line as isize - self.view.scroll as isize;
 
             if (rel_start_line < 0 && rel_end_line < 0)
@@ -108,7 +110,7 @@ impl<'a> Widget for ViewWidget<'a> {
 
             if rel_end_line >= area.height as isize {
                 rel_end_line = area.height as isize - 1;
-                end_col = area.width as usize - 1;
+                end_col = text.line(area.height as usize - 1).len_chars() - 1;
             }
 
             if rel_start_line == rel_end_line {
@@ -119,14 +121,14 @@ impl<'a> Widget for ViewWidget<'a> {
                         .insert(Modifier::REVERSED);
                 }
             } else {
-                for col in start_col..area.width as usize {
+                for col in start_col..area.width.min(text.line(rel_start_line as usize).len_chars() as u16) as usize {
                     buf.cell_mut((col as u16, rel_start_line as u16))
                         .unwrap()
                         .modifier
                         .insert(Modifier::REVERSED);
                 }
                 for row in rel_start_line + 1..rel_end_line {
-                    for col in start_col..=end_col {
+                    for col in 0..area.width.min(text.line(row as usize).len_chars() as u16) as usize {
                         buf.cell_mut((col as u16, row as u16))
                             .unwrap()
                             .modifier
@@ -154,16 +156,22 @@ fn main() {
     let options = Options::parse();
     let engine = Engine::new().unwrap();
 
-    engine.borrow_mut().load_lua("./config.lua");
+    engine.load_lua("./config.lua");
 
     if let Some(path) = options.path {
-        engine.borrow_mut().open(path);
+        engine.open(path);
     }
 
     let mut frontend = Frontend {
         engine,
         exit: false,
     };
+
+    std::panic::update_hook(|hook, info| {
+        let _ = disable_raw_mode();
+        let _  =stdout().execute(LeaveAlternateScreen);
+        hook(info)
+    });
 
     enable_raw_mode().unwrap();
     stdout().execute(EnterAlternateScreen).unwrap();

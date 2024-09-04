@@ -5,7 +5,7 @@ use mlua::FromLua;
 use crate::{buffer::BufferId, selection::Selection};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ViewId(usize);
+pub struct ViewId(pub usize);
 
 impl ViewId {
     pub fn generate() -> Self {
@@ -38,7 +38,7 @@ impl View {
             id,
             buffer,
             scroll: 0,
-            selections: vec![Selection::new()],
+            selections: vec![Selection::new(id)],
         }
     }
 }

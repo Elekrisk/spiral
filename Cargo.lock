@@ -228,6 +228,7 @@ dependencies = [
  "clap",
  "engine",
  "env_logger",
+ "log",
  "ratatui",
 ]
 

@@ -5,17 +5,13 @@ use mlua::{FromLua, UserData};
 use ropey::{Rope, RopeSlice};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct BufferId(usize);
+pub struct BufferId(pub usize);
 
 impl BufferId {
     pub fn generate() -> Self {
         static NEXT: AtomicUsize = AtomicUsize::new(1);
         let id = NEXT.fetch_add(1, Ordering::Relaxed);
         Self(id)
-    }
-
-    pub fn get_usize(&self) -> usize {
-        self.0
     }
 }
 
