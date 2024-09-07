@@ -4,7 +4,7 @@ use std::{
     collections::HashMap,
     fs::File,
     ops::Deref,
-    path::Path,
+    path::{Path, PathBuf},
     rc::Rc,
     str::FromStr,
 };
@@ -76,10 +76,42 @@ impl Engine {
         self.state.deref().borrow_mut()
     }
 
-    pub fn load_lua(&self, path: &str) -> anyhow::Result<()> {
+    pub fn reload_config(&self) -> anyhow::Result<()> {
+        let mut paths = vec![];
+        #[cfg(target_os = "linux")]
+        paths.push(PathBuf::from("/etc/spiral/default.lua"));
+
+        let mut path = dirs::config_dir()
+            .map(|mut p| {
+                p.push("spiral");
+                p
+            })
+            .unwrap_or(PathBuf::from("."));
+        path.push("config.lua");
+        let user_config_path = path.display().to_string();
+        paths.push(path);
+
+        paths.retain(|p| p.exists());
+
+        if paths.is_empty() {
+            anyhow::bail!("No lua config found; create one at {}", user_config_path);
+        }
+
+        self.state_mut().commands = builtin_commands().map(|c| (c.name.clone(), c)).collect();
+        self.state_mut().keybinds.binds.clear();
+
+        for path in paths {
+            self.load_lua(&path)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn load_lua(&self, path: impl AsRef<Path>) -> anyhow::Result<()> {
+        let path = path.as_ref();
         let lua = self.state.borrow().lua;
         lua.load(std::fs::read_to_string(path)?)
-            .set_name(path)
+            .set_name(path.to_string_lossy())
             .exec()?;
         Ok(())
     }
@@ -120,7 +152,7 @@ impl Engine {
                 KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     return Ok(true)
                 }
-                other => self.key_event(key),
+                _ => self.key_event(key),
             },
             Event::Mouse(_) => {}
             Event::Paste(_) => {}

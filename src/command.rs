@@ -458,12 +458,9 @@ pub fn builtin_commands() -> impl Iterator<Item = Command> {
             },
         ),
         Command::new("reload-config", "Reload config", |engine: Engine| {
-            let mut state = engine.state_mut();
-            state.commands = builtin_commands().map(|c| (c.name.clone(), c)).collect();
-            state.keybinds.binds.clear();
-            drop(state);
-            if let Err(e) = engine.load_lua("./config.lua") {
+            if let Err(e) = engine.reload_config() {
                 error!("{e}");
+                engine.state_mut().error_log.push(e.to_string());
             }
         }),
     ]

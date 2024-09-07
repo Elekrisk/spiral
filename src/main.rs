@@ -58,7 +58,7 @@ fn main() {
     let options = Options::parse();
 
     let engine = Engine::new().unwrap();
-    if let Err(e) = engine.load_lua("config.lua") {
+    if let Err(e) = engine.reload_config() {
         eprintln!("{e}");
         return;
     }
