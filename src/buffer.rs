@@ -1,8 +1,10 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{io::Write, sync::atomic::{AtomicUsize, Ordering}};
 
 use log::debug;
 use mlua::{FromLua, UserData};
 use ropey::{Rope, RopeSlice};
+
+use crate::history::History;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BufferId(pub usize);
@@ -28,6 +30,9 @@ pub struct Buffer {
     pub id: BufferId,
     pub name: String,
     pub contents: ropey::Rope,
+    pub history: History,
+
+    pub backing: BufferBacking
 }
 
 impl Buffer {
@@ -37,7 +42,13 @@ impl Buffer {
             id,
             name,
             contents: rope,
+            history: History::new(),
+            backing: BufferBacking::None,
         }
+    }
+
+    pub fn set_backing(&mut self, backing: BufferBacking) {
+        self.backing = backing;
     }
 
     pub fn get_visible_part(&self, top_line: usize, mut line_count: usize) -> Option<RopeSlice> {
@@ -50,6 +61,27 @@ impl Buffer {
             let first_char = self.contents.line_to_char(first_line);
             let last_char = self.contents.line_to_char(last_line + 1);
             Some(self.contents.slice(first_char..last_char))
+        }
+    }
+}
+
+pub enum BufferBacking {
+    None,
+    File(std::path::PathBuf)
+}
+
+impl BufferBacking {
+    pub fn save(&self, buffer: &Buffer) -> anyhow::Result<()> {
+        match self {
+            BufferBacking::None => Ok(()),
+            BufferBacking::File(path) => {
+                let mut writer = std::fs::File::create(path)?;
+                for chunk in buffer.contents.chunks() {
+                    writer.write_all(chunk.as_bytes())?;
+                }
+
+                Ok(())
+            },
         }
     }
 }
