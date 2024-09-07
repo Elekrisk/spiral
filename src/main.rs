@@ -3,6 +3,7 @@
 #![feature(iterator_try_collect)]
 #![feature(panic_update_hook)]
 #![feature(let_chains)]
+#![feature(iter_intersperse)]
 
 mod buffer;
 mod command;

@@ -11,11 +11,13 @@ use std::{
 use log::error;
 use mlua::IntoLua;
 use ratatui::buffer;
+use ropey::Rope;
 
 use crate::{
     buffer::{Buffer, BufferBacking, BufferId},
     engine::{Engine, EngineState},
     history::{Action, HistoryAction},
+    keybind::{Binding, Key},
     selection::Selection,
     view::{View, ViewId},
 };
@@ -430,20 +432,24 @@ pub fn builtin_commands() -> impl Iterator<Item = Command> {
         Command::new("redo", "Redo", |engine: Engine| {
             redo(engine);
         }),
-        Command::new("write", "Write buffer to disk or to given path", |engine: Engine, args: Vec<CommandArg>| {
-            let path = args.into_iter().next();
-            if let Some(path) = path {
-                let path: String = path.into();
-                let (_, mut buffer) = view_buffer(engine.state_mut());
-                buffer.backing = BufferBacking::File(path.try_into().unwrap());
-            }
+        Command::new(
+            "write",
+            "Write buffer to disk or to given path",
+            |engine: Engine, args: Vec<CommandArg>| {
+                let path = args.into_iter().next();
+                if let Some(path) = path {
+                    let path: String = path.into();
+                    let (_, mut buffer) = view_buffer(engine.state_mut());
+                    buffer.backing = BufferBacking::File(path.try_into().unwrap());
+                }
 
-            let state = engine.state();
-            let view = state.active_view;
-            let view = state.view(view).unwrap();
-            let buffer = state.buffer(view.buffer).unwrap();
-            buffer.backing.save(&buffer)
-        }),
+                let state = engine.state();
+                let view = state.active_view;
+                let view = state.view(view).unwrap();
+                let buffer = state.buffer(view.buffer).unwrap();
+                buffer.backing.save(&buffer)
+            },
+        ),
         Command::new("quit", "Quit Spiral", |engine: Engine| {
             engine.state_mut().should_quit = true;
         }),
@@ -462,6 +468,77 @@ pub fn builtin_commands() -> impl Iterator<Item = Command> {
                 error!("{e}");
                 engine.state_mut().error_log.push(e.to_string());
             }
+        }),
+        Command::new("binds", "Show current keybinds", |engine: Engine| {
+            let mut state = engine.state_mut();
+            let buffer = state.create_buffer();
+            let view = state.create_view(buffer);
+            state.active_view = view;
+
+            let mut contents = String::new();
+
+            for (mode, binds) in &state.keybinds.binds {
+                use std::fmt::Write;
+                writeln!(&mut contents, "{mode} {{").unwrap();
+
+                let mut seq = vec![];
+
+                fn print_binding<'a>(
+                    contents: &mut String,
+                    seq: &mut Vec<&'a Key>,
+                    binding: &'a Binding,
+                ) {
+                    match binding {
+                        Binding::Group(map) => {
+                            for (key, binding) in map {
+                                seq.push(key);
+                                print_binding(contents, seq, binding);
+                                seq.pop();
+                            }
+                        }
+                        Binding::Commands(cmds) => {
+                            writeln!(
+                                contents,
+                                "    {} -- {}",
+                                seq.iter()
+                                    .map(|k| k.to_string())
+                                    .intersperse(String::from(" "))
+                                    .collect::<String>(),
+                                cmds.iter()
+                                    .cloned()
+                                    .intersperse(String::from(", "))
+                                    .collect::<String>(),
+                            )
+                            .unwrap();
+                        }
+                    }
+                }
+
+                for (key, bind) in binds {
+                    seq.push(key);
+                    print_binding(&mut contents, &mut seq, bind);
+                    seq.pop();
+                }
+
+                writeln!(&mut contents, "}}").unwrap();
+            }
+
+            let buffer = state.buffers.get_mut(&buffer).unwrap();
+            buffer.contents = contents.into();
+        }),
+        Command::new("commands", "Show commands", |engine: Engine| {
+            let mut state = engine.state_mut();
+            let buffer = state.create_buffer();
+            let view = state.create_view(buffer);
+            state.active_view = view;
+
+            let mut contents = String::new();
+
+            for cmd in state.commands.values() {
+                use std::fmt::Write;
+                writeln!(&mut contents, "{}: {}", cmd.name, cmd.desc).unwrap();
+            }
+            state.buffers.get_mut(&buffer).unwrap().contents = contents.into();
         }),
     ]
     .into_iter()

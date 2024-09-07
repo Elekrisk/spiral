@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 use log::debug;
-use ratatui::crossterm::event::{KeyCode, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyModifiers, MediaKeyCode};
 
 use crate::{command::Command, mode::Mode};
 
@@ -91,6 +91,75 @@ impl Binding {
 pub struct Key {
     pub code: KeyCode,
     pub modifiers: KeyModifiers,
+}
+
+impl Display for Key {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let prefixes = self
+            .modifiers
+            .iter()
+            .filter_map(|keymod| {
+                Some(match keymod {
+                    KeyModifiers::ALT => "A-",
+                    KeyModifiers::CONTROL => "C-",
+                    KeyModifiers::HYPER => "H-",
+                    KeyModifiers::META => "M-",
+                    KeyModifiers::NONE => return None,
+                    KeyModifiers::SHIFT => "S-",
+                    KeyModifiers::SUPER => "Su-",
+                    _ => unreachable!()
+                })
+            })
+            .collect::<String>();
+        let key = match self.code {
+            KeyCode::Backspace => "bspc".to_string(),
+            KeyCode::Enter => "enter".to_string(),
+            KeyCode::Left => "left".to_string(),
+            KeyCode::Right => "right".to_string(),
+            KeyCode::Up => "up".to_string(),
+            KeyCode::Down => "down".to_string(),
+            KeyCode::Home => "home".to_string(),
+            KeyCode::End => "end".to_string(),
+            KeyCode::PageUp => "pageup".to_string(),
+            KeyCode::PageDown => "pagedown".to_string(),
+            KeyCode::Tab => "tab".to_string(),
+            KeyCode::BackTab => "backtab".to_string(),
+            KeyCode::Delete => "delete".to_string(),
+            KeyCode::Insert => "insert".to_string(),
+            KeyCode::F(n) => format!("f{n}"),
+            KeyCode::Char(c) => match c {
+                ' ' => "spc".to_string(),
+                o => o.to_string(),
+            },
+            KeyCode::Null => "null".to_string(),
+            KeyCode::Esc => "esc".to_string(),
+            KeyCode::CapsLock => "caps".to_string(),
+            KeyCode::ScrollLock => "scrolllock".to_string(),
+            KeyCode::NumLock => "numlock".to_string(),
+            KeyCode::PrintScreen => "printscreen".to_string(),
+            KeyCode::Pause => "pause".to_string(),
+            KeyCode::Menu => "menu".to_string(),
+            KeyCode::KeypadBegin => "keypadbegin".to_string(),
+            KeyCode::Media(key) => match key {
+                MediaKeyCode::Play => "play".to_string(),
+                MediaKeyCode::Pause => "pause".to_string(),
+                MediaKeyCode::PlayPause => "playpause".to_string(),
+                MediaKeyCode::Reverse => "reverse".to_string(),
+                MediaKeyCode::Stop => "stop".to_string(),
+                MediaKeyCode::FastForward => "fastforward".to_string(),
+                MediaKeyCode::Rewind => "rewind".to_string(),
+                MediaKeyCode::TrackNext => "tracknext".to_string(),
+                MediaKeyCode::TrackPrevious => "trackprev".to_string(),
+                MediaKeyCode::Record => "record".to_string(),
+                MediaKeyCode::LowerVolume => "lowervolume".to_string(),
+                MediaKeyCode::RaiseVolume => "raisevolume".to_string(),
+                MediaKeyCode::MuteVolume => "mutevolume".to_string(),
+            },
+            KeyCode::Modifier(_) => unreachable!(),
+        };
+
+        write!(f, "{prefixes}{key}")
+    }
 }
 
 pub fn parse_key_sequence(seq: &str) -> anyhow::Result<Vec<Key>> {
