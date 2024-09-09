@@ -14,6 +14,7 @@ mod mode;
 mod selection;
 mod view;
 mod history;
+mod kill_ring;
 
 use std::{
     collections::HashMap,

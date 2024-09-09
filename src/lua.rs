@@ -136,32 +136,7 @@ pub fn init_lua(engine: Engine) -> anyhow::Result<()> {
         lua.create_function(move |lua, args: MultiValue| {
             let mut args = args.into_iter();
             let (key, mode, command) = match args.len() {
-                2 => {
-                    let key = args
-                        .next()
-                        .unwrap()
-                        .as_string()
-                        .ok_or(mlua::Error::runtime("oh noes"))?
-                        .to_str()?
-                        .to_string();
-                    let mode = Mode::Normal;
-                    let command = args
-                        .next()
-                        .unwrap()
-                        .as_string()
-                        .ok_or(mlua::Error::runtime("oh noes"))?
-                        .to_str()?
-                        .to_string();
-                    (key, mode, vec![command])
-                }
                 3.. => {
-                    let key = args
-                        .next()
-                        .unwrap()
-                        .as_string()
-                        .ok_or(mlua::Error::runtime("oh noes"))?
-                        .to_str()?
-                        .to_string();
                     let mode = args
                         .next()
                         .unwrap()
@@ -170,8 +145,15 @@ pub fn init_lua(engine: Engine) -> anyhow::Result<()> {
                         .to_str()?
                         .parse()
                         .map_err(mlua::Error::external)?;
+                    let key = args
+                        .next()
+                        .unwrap()
+                        .as_string()
+                        .ok_or(mlua::Error::runtime("oh noes"))?
+                        .to_str()?
+                        .to_string();
                     let mut commands = vec![];
-                    while let Some(arg) = args.next() {
+                    for arg in args {
                         let command = arg
                             .as_string()
                             .ok_or(mlua::Error::runtime("oh noes"))?
@@ -183,7 +165,7 @@ pub fn init_lua(engine: Engine) -> anyhow::Result<()> {
                 }
                 _ => {
                     return Err(mlua::Error::runtime(
-                        "bind must be called with 2 or 3 arguments",
+                        "bind must be called with 3 or more arguments",
                     ));
                 }
             };
@@ -309,13 +291,21 @@ impl UserData for ViewRef {
                 let end: usize = selection.get("end")?;
                 let dir = selection.get("direction")?;
 
-                Selection { view: view_ref.id, start, end, dir }
+                Selection {
+                    view: view_ref.id,
+                    start,
+                    end,
+                    dir,
+                }
             } else if selection.contains_key("head")? {
                 let head: usize = selection.get("head")?;
                 let anchor: usize = selection.get("anchor")?;
 
                 Selection {
-                    view: view_ref.id, start: head, end: anchor, dir: crate::selection::Direction::Forward
+                    view: view_ref.id,
+                    start: head,
+                    end: anchor,
+                    dir: crate::selection::Direction::Forward,
                 }
             } else {
                 todo!()
@@ -328,7 +318,12 @@ impl UserData for ViewRef {
 
             selection.make_valid(&buffer.contents);
 
-            state.views.get_mut(&view_ref.id).unwrap().selections.push(selection);
+            state
+                .views
+                .get_mut(&view_ref.id)
+                .unwrap()
+                .selections
+                .push(selection);
 
             Ok(())
         });
