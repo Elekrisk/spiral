@@ -81,8 +81,8 @@ impl Engine {
 
     pub fn reload_config(&self) -> anyhow::Result<()> {
         let mut paths = vec![];
-        // paths.push(PathBuf::from("/etc/spiral/config.lua"));
-        paths.push(PathBuf::from("config.lua"));
+        paths.push(PathBuf::from("/etc/spiral/config.lua"));
+        // paths.push(PathBuf::from("config.lua"));
 
         let mut path = dirs::config_dir()
             .map(|mut p| {
