@@ -83,8 +83,7 @@ fn main() {
         .unwrap()
         .execute(PushKeyboardEnhancementFlags(
             KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES,
-        ))
-        .unwrap();
+        ));
 
     loop {
         if event::poll(Duration::from_millis(20)).unwrap() {

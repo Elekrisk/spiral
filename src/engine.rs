@@ -12,7 +12,7 @@ use std::{
 use log::{error, trace};
 use mlua::UserData;
 use ratatui::{
-    crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers},
+    crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     layout::Constraint,
     style::{Modifier, Style},
     widgets::Widget,
@@ -90,6 +90,8 @@ impl Engine {
         let user_config_path = path.display().to_string();
         paths.push(path);
 
+        paths.push("config.lua".into());
+
         paths.retain(|p| p.exists());
 
         if paths.is_empty() {
@@ -147,7 +149,7 @@ impl Engine {
         match event {
             Event::FocusGained => {}
             Event::FocusLost => {}
-            Event::Key(key) => match key.code {
+            Event::Key(key) if key.kind != KeyEventKind::Release  => match key.code {
                 KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     return Ok(true)
                 }
@@ -161,6 +163,7 @@ impl Engine {
                     height: height as usize,
                 });
             }
+            _ => {}
         }
 
         Ok(self.state().should_quit)
