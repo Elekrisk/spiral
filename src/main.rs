@@ -8,13 +8,13 @@
 mod buffer;
 mod command;
 mod engine;
+mod history;
 mod keybind;
+mod kill_ring;
 mod lua;
 mod mode;
 mod selection;
 mod view;
-mod history;
-mod kill_ring;
 
 use std::{
     collections::HashMap,
@@ -47,6 +47,10 @@ use view::{View, ViewId};
 #[derive(clap::Parser)]
 struct Options {
     path: Option<PathBuf>,
+    #[arg(long, short)]
+    config: Option<PathBuf>,
+    #[arg(long)]
+    ignore_global_config: bool,
 }
 
 fn main() {
@@ -57,14 +61,15 @@ fn main() {
         )))
         .init();
 
-    let options = Options::parse();
+    let mut options = Options::parse();
+    let path = options.path.take();
 
-    let engine = Engine::new().unwrap();
+    let engine = Engine::new(options).unwrap();
     if let Err(e) = engine.reload_config() {
         eprintln!("{e}");
         return;
     }
-    if let Some(path) = options.path {
+    if let Some(path) = path {
         engine.open(path);
     }
 
