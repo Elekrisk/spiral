@@ -21,7 +21,12 @@ use ratatui::{
 use ropey::Rope;
 
 use crate::{
-    buffer::{Buffer, BufferBacking, BufferId}, command::{builtin_commands, Command, CommandArgParser}, keybind::{Binding, Key, Keybindings}, kill_ring::KillRing, mode::Mode, view::{View, ViewId, ViewWidget}
+    buffer::{Buffer, BufferBacking, BufferId},
+    command::{builtin_commands, Command, CommandArgParser},
+    keybind::{Binding, Key, Keybindings},
+    kill_ring::KillRing,
+    mode::Mode,
+    view::{View, ViewId, ViewWidget},
 };
 
 #[derive(Clone)]
@@ -360,7 +365,11 @@ impl EngineState {
     pub fn draw(&self, frame: &mut Frame) {
         let view = self.view(self.active_view).unwrap();
         let buffer = self.buffer(view.buffer).unwrap();
-        let widget = ViewWidget { view, buffer };
+        let widget = ViewWidget {
+            view,
+            buffer,
+            mode: &self.current_mode,
+        };
         let status_line = StatusLineWidget {
             mode: &self.current_mode,
         };

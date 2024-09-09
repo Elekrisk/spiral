@@ -11,6 +11,7 @@ use ropey::Rope;
 use crate::{
     buffer::{Buffer, BufferId},
     engine::Size,
+    mode::Mode,
     selection::Selection,
 };
 
@@ -82,6 +83,7 @@ impl View {
 pub struct ViewWidget<'a> {
     pub view: &'a View,
     pub buffer: &'a Buffer,
+    pub mode: &'a Mode,
 }
 
 impl<'a> Widget for ViewWidget<'a> {
@@ -91,6 +93,7 @@ impl<'a> Widget for ViewWidget<'a> {
     {
         let view = self.view;
         let buffer = self.buffer;
+        let mode = self.mode;
 
         let Some(lines) = buffer.contents.get_lines_at(view.vscroll) else {
             return;
@@ -183,12 +186,18 @@ impl<'a> Widget for ViewWidget<'a> {
                 continue;
             }
 
+            let cursor_color = match mode {
+                Mode::Normal => Color::White,
+                Mode::Insert => Color::Green,
+                _ => Color::Yellow,
+            };
+
             buf[(
                 (head_col - view.hscroll) as u16,
                 (head_line - view.vscroll) as u16,
             )]
-                .modifier
-                .insert(Modifier::REVERSED);
+                .set_fg(Color::Black)
+                .set_bg(cursor_color);
         }
     }
 }
