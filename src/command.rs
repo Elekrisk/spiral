@@ -18,6 +18,7 @@ use crate::{
     engine::{Engine, EngineState},
     history::{Action, HistoryAction},
     keybind::{Binding, Key},
+    kill_ring::KillRingEntry,
     selection::Selection,
     view::{View, ViewId},
 };
@@ -92,7 +93,12 @@ fn get_head_pos(selection: &Selection, buffer: &Buffer) -> (usize, usize) {
 
 fn set_head_pos(selection: &mut Selection, buffer: &Buffer, line: usize, col: usize) {
     let line = line.min(buffer.contents.len_lines());
-    let col = col.min(buffer.contents.line(line).len_chars().saturating_sub(1));
+    let max_col = if line == buffer.contents.len_lines() - 1 {
+        buffer.contents.line(line).len_chars()
+    } else {
+        buffer.contents.line(line).len_chars().saturating_sub(1)
+    };
+    let col = col.min(max_col);
     *selection.head_mut() = buffer.contents.line_to_char(line) + col;
     selection.make_valid(&buffer.contents);
 }
@@ -161,12 +167,15 @@ fn delete(engine: Engine) {
 
     let mut actions = vec![];
 
+    let mut texts = vec![];
+
     for i in 0..selections.len() {
         let s = selections[i].1;
         let end = (s.end + 1).min(len);
         let rem_len = end - s.start;
         let text = buffer.contents.slice(s.start..end);
         let text = text.to_string();
+        texts.push(text.clone());
         let action = Action::TextDeletion {
             deleted_text: text,
             start: s.start,
@@ -186,6 +195,14 @@ fn delete(engine: Engine) {
     buffer.history.register_edit(HistoryAction { actions });
 
     view.make_selection_visisble(&buffer);
+
+    drop(buffer);
+    drop(view);
+
+    engine
+        .state_mut()
+        .kill_ring
+        .add_entry(KillRingEntry::new(texts));
 }
 
 fn backspace(engine: Engine) {
@@ -364,7 +381,98 @@ fn redo(engine: Engine) {
     }
 }
 
-fn write(engine: Engine) {}
+fn show_kill_ring(engine: Engine) {
+    let mut state = engine.state_mut();
+    let buffer_id = state.create_buffer();
+    let view_id = state.create_view(buffer_id);
+    state.active_view = view_id;
+
+    let mut contents = String::new();
+    for entry in &state.kill_ring.entries {
+        use std::fmt::Write;
+        for text in &entry.text {
+            write!(&mut contents, "{text:?}, ").unwrap();
+        }
+        writeln!(&mut contents).unwrap();
+    }
+    let buffer = state.buffers.get_mut(&buffer_id).unwrap();
+
+    buffer.contents = contents.into();
+}
+
+fn copy_kill_ring(engine: Engine) {
+    let mut state = engine.state_mut();
+    let state = &mut *state;
+
+    let active_view = state.active_view;
+    let view = state.views.get_mut(&active_view).unwrap();
+    let buffer = state.buffers.get_mut(&view.buffer).unwrap();
+
+    state
+        .kill_ring
+        .add_entry(KillRingEntry::new(view.selections.iter().map(
+            |selection| {
+                buffer
+                    .contents
+                    .slice(selection.start..(selection.end + 1).min(buffer.contents.len_chars()))
+                    .to_string()
+            },
+        )));
+}
+
+fn paste_kill_ring(engine: Engine, before: bool) {
+    let mut state = engine.state_mut();
+
+    if state.kill_ring.entries.is_empty() {
+        return;
+    }
+
+    let state = &mut *state;
+    let active_view = state.active_view;
+    let view = state.views.get_mut(&active_view).unwrap();
+    let buffer = state.buffers.get_mut(&view.buffer).unwrap();
+
+    let mut selections = view
+        .selections
+        .iter()
+        .copied()
+        .enumerate()
+        .collect::<Vec<_>>();
+
+    selections.sort_by_key(|(_, s)| s.start);
+
+    let mut actions = vec![];
+
+    let texts = state
+        .kill_ring
+        .get()
+        .unwrap()
+        .get_for_cursor_count(selections.len());
+
+    for i in 0..selections.len() {
+        let s = selections[i].1;
+        let insertion = (if before { s.start } else { s.end + 1 }).min(buffer.contents.len_chars());
+        let text_len = texts[0].len();
+        buffer.contents.insert(insertion, texts[0]);
+        let action = Action::TextInsertion {
+            text: texts[0].to_string(),
+            start: insertion,
+        };
+        actions.push(action);
+        for sel in selections[i + if before { 0 } else { 1 }..]
+            .iter_mut()
+            .map(|(_, s)| s)
+        {
+            sel.start += text_len;
+            sel.end += text_len;
+        }
+        view.selections[selections[i].0] = selections[i].1;
+    }
+
+    buffer.history.register_edit(HistoryAction { actions });
+
+    view.make_selection_visisble(buffer);
+}
 
 pub fn builtin_commands() -> impl Iterator<Item = Command> {
     [
@@ -598,6 +706,23 @@ pub fn builtin_commands() -> impl Iterator<Item = Command> {
             }
             state.buffers.get_mut(&buffer).unwrap().contents = contents.into();
         }),
+        Command::new("show-kill-ring", "Show kill ring", |engine| {
+            show_kill_ring(engine);
+        }),
+        Command::new(
+            "paste-kill-ring",
+            "Paste last item from kill ring",
+            |engine, before: bool| {
+                paste_kill_ring(engine, before);
+            },
+        ),
+        Command::new(
+            "copy-kill-ring",
+            "Copy selection to kill ring",
+            |engine| {
+                copy_kill_ring(engine);
+            },
+        ),
     ]
     .into_iter()
 }
@@ -642,6 +767,8 @@ impl<'a> CommandArgParser<'a> {
                             Some(CommandArg::Integer(i))
                         } else {
                             match buf.as_str() {
+                                "true" => Some(CommandArg::Bool(true)),
+                                "false" => Some(CommandArg::Bool(false)),
                                 _ => Some(CommandArg::String(buf)),
                             }
                         }
@@ -664,6 +791,8 @@ impl<'a> CommandArgParser<'a> {
                         Some(CommandArg::Integer(i))
                     } else {
                         match buf.as_str() {
+                            "true" => Some(CommandArg::Bool(true)),
+                            "false" => Some(CommandArg::Bool(false)),
                             _ => Some(CommandArg::String(buf)),
                         }
                     }

@@ -21,11 +21,7 @@ use ratatui::{
 use ropey::Rope;
 
 use crate::{
-    buffer::{Buffer, BufferBacking, BufferId},
-    command::{builtin_commands, Command, CommandArgParser},
-    keybind::{Binding, Key, Keybindings},
-    mode::Mode,
-    view::{View, ViewId, ViewWidget},
+    buffer::{Buffer, BufferBacking, BufferId}, command::{builtin_commands, Command, CommandArgParser}, keybind::{Binding, Key, Keybindings}, kill_ring::KillRing, mode::Mode, view::{View, ViewId, ViewWidget}
 };
 
 #[derive(Clone)]
@@ -51,6 +47,8 @@ pub struct EngineState {
     pub error_log: Vec<String>,
 
     pub size: Size,
+
+    pub kill_ring: KillRing,
 }
 
 #[derive(Clone, Copy)]
@@ -78,7 +76,8 @@ impl Engine {
 
     pub fn reload_config(&self) -> anyhow::Result<()> {
         let mut paths = vec![];
-        paths.push(PathBuf::from("/etc/spiral/config.lua"));
+        // paths.push(PathBuf::from("/etc/spiral/config.lua"));
+        paths.push(PathBuf::from("config.lua"));
 
         let mut path = dirs::config_dir()
             .map(|mut p| {
@@ -300,6 +299,7 @@ impl EngineState {
             cli: CommandLine::new(),
             error_log: vec![],
             size,
+            kill_ring: KillRing::new(),
         }
     }
 
