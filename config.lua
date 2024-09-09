@@ -83,6 +83,6 @@ Editor.bind("j", "file-tree", "move-char-down", "extend-selection-to-lines")
 Editor.bind("k", "file-tree", "move-char-up", "extend-selection-to-lines")
 Editor.bind("enter", "file-tree", "file-tree-open-current")
 
-Editor.bind("bspc", "insert", "move-char-left", "delete")
+Editor.bind("bspc", "insert", "backspace")
 Editor.bind("enter", "insert", "insert \"\\n\"")
 Editor.bind("tab", "insert", "insert \"\\t\"")

@@ -188,6 +188,57 @@ fn delete(engine: Engine) {
     view.make_selection_visisble(&buffer);
 }
 
+fn backspace(engine: Engine) {
+    let state = engine.state_mut();
+    let (mut view, mut buffer) = view_buffer(state);
+
+    let mut selections = view
+        .selections
+        .iter()
+        .copied()
+        .enumerate()
+        .collect::<Vec<_>>();
+
+    selections.sort_by_key(|(_, s)| s.start);
+
+    let mut len = buffer.contents.len_chars();
+
+    let mut actions = vec![];
+
+    for i in 0..selections.len() {
+        let s = selections[i].1;
+        let end = (s.end + 1).min(len);
+        let rem_len = end - s.start;
+
+        if s.start == 0 {
+            continue;
+        }
+
+        let start = s.start - 1;
+        let end = s.start;
+
+        let text = buffer.contents.slice(start..end);
+        let text = text.to_string();
+        let action = Action::TextDeletion {
+            deleted_text: text,
+            start: s.start,
+            end,
+        };
+        actions.push(action);
+        buffer.contents.remove(start..end);
+        len -= rem_len;
+        for sel in selections[i..].iter_mut().map(|(_, s)| s) {
+            sel.start = sel.start.saturating_sub(1);
+            sel.end = sel.end.saturating_sub(1);
+        }
+        view.selections[selections[i].0] = selections[i].1;
+    }
+
+    buffer.history.register_edit(HistoryAction { actions });
+
+    view.make_selection_visisble(&buffer);
+}
+
 fn insert(engine: Engine, text: String) {
     let state = engine.state_mut();
     let (mut view, mut buffer) = view_buffer(state);
@@ -375,6 +426,13 @@ pub fn builtin_commands() -> impl Iterator<Item = Command> {
         Command::new("delete", "Delete selected text", |engine: Engine| {
             delete(engine);
         }),
+        Command::new(
+            "backspace",
+            "Delete character before selection",
+            |engine: Engine| {
+                backspace(engine);
+            },
+        ),
         Command::new(
             "insert",
             "Insert given text before each selection",
