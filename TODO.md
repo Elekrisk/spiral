@@ -1,12 +1,12 @@
 # TODO
 
-- [ ] Copy paste
+- [-] Copy paste
 - [ ] Mer API-grejer
 - [ ] Unbind/override
   - [ ] Unbind ALL
 - [ ] Fixa bind-API
   - [ ] väldigt oergonomiskt just nu
-- [ ] Cursorfärg/form per mode
+- [-] Cursorfärg/form per mode
 - [ ] Alias
 - [ ] Söka
 - [ ] Fixa undo
