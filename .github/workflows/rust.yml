@@ -10,8 +10,18 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  rustfmt:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+    - name: Check Format
+      run: cargo fmt --check
 
+  build:
     runs-on: ubuntu-latest
 
     steps:
