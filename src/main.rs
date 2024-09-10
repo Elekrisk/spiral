@@ -8,13 +8,13 @@
 mod buffer;
 mod command;
 mod engine;
+mod history;
 mod keybind;
+mod kill_ring;
 mod lua;
 mod mode;
 mod selection;
 mod view;
-mod history;
-mod kill_ring;
 
 use std::{
     collections::HashMap,

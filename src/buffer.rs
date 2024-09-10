@@ -1,8 +1,14 @@
-use std::{io::Write, sync::atomic::{AtomicUsize, Ordering}};
+use std::{
+    io::Write,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use log::debug;
 use mlua::{FromLua, UserData};
+use ratatui::style::Color;
 use ropey::{Rope, RopeSlice};
+use tree_sitter::{Parser, Tree};
+use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter};
 
 use crate::history::History;
 
@@ -32,18 +38,90 @@ pub struct Buffer {
     pub contents: ropey::Rope,
     pub history: History,
 
-    pub backing: BufferBacking
+    pub backing: BufferBacking,
+
+    pub parser: Parser,
+    pub tree: Tree,
+
+    pub colors: Vec<Color>,
 }
 
 impl Buffer {
     pub fn create_from_contents(name: String, rope: Rope) -> Self {
         let id = BufferId::generate();
+
+        let content = rope.to_string();
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_rust::language())
+            .expect("Error loading Rust grammar");
+
+        let tree = parser.parse(&content, None).unwrap();
+
+        let highlight_names = [
+            "keyword", "function", "type", "number", "string", "variable",
+        ];
+        let mut highlighter = Highlighter::new();
+        let rust_language = tree_sitter_rust::language();
+        let mut config = HighlightConfiguration::new(
+            rust_language,
+            "rust",
+            tree_sitter_rust::HIGHLIGHTS_QUERY,
+            tree_sitter_rust::INJECTIONS_QUERY,
+            "",
+        )
+        .unwrap();
+        config.configure(&highlight_names);
+
+        let highlights = highlighter
+            .highlight(&config, content.as_bytes(), None, |_| None)
+            .unwrap();
+
+        let mut colors: Vec<Color> = vec![Color::White; content.len()];
+
+        let mut color_stack: Vec<Color> = Vec::new();
+
+        for event in highlights {
+            match event.unwrap() {
+                // Processed a chunk of text spanning from start..end
+                HighlightEvent::Source { start, end } => {
+                    // Sometimes you will get a source event that has no highlight,
+                    // so make sure to check if there is a color on the stack
+                    if let Some(color) = color_stack.last() {
+                        (start..end).for_each(|i| {
+                            colors[i] = *color;
+                        });
+                    }
+                }
+                HighlightEvent::HighlightStart(highlight) => {
+                    // `highlight` is a tuple struct containing the node type's ID
+                    let node_type_id = highlight.0;
+                    color_stack.push(match node_type_id {
+                        0 => Color::Red,
+                        1 => Color::Blue,
+                        2 => Color::Yellow,
+                        3 => Color::Magenta,
+                        4 => Color::Green,
+                        5 => Color::Cyan,
+                        _ => Color::White,
+                    });
+                }
+                HighlightEvent::HighlightEnd => {
+                    color_stack.pop();
+                }
+            }
+        }
+
         Self {
             id,
             name,
             contents: rope,
             history: History::new(),
             backing: BufferBacking::None,
+            parser,
+            tree,
+            colors,
         }
     }
 
@@ -67,7 +145,7 @@ impl Buffer {
 
 pub enum BufferBacking {
     None,
-    File(std::path::PathBuf)
+    File(std::path::PathBuf),
 }
 
 impl BufferBacking {
@@ -81,7 +159,7 @@ impl BufferBacking {
                 }
 
                 Ok(())
-            },
+            }
         }
     }
 }
