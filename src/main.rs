@@ -4,11 +4,11 @@
 #![feature(panic_update_hook)]
 #![feature(let_chains)]
 #![feature(iter_intersperse)]
+#![feature(get_many_mut)]
 
 mod buffer;
 mod command;
 mod engine;
-mod history;
 mod keybind;
 mod kill_ring;
 mod lua;
@@ -31,9 +31,9 @@ use engine::Engine;
 use log::{debug, error, warn};
 use ratatui::{
     crossterm::{
+        self,
         event::{
-            self, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
-            PushKeyboardEnhancementFlags,
+            KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
         },
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
         ExecutableCommand,
@@ -92,8 +92,8 @@ fn main() {
         ));
 
     loop {
-        if event::poll(Duration::from_millis(20)).unwrap() {
-            let event = event::read().unwrap();
+        if crossterm::event::poll(Duration::from_millis(20)).unwrap() {
+            let event = crossterm::event::read().unwrap();
             let exit = engine.event(event).unwrap();
             if exit {
                 break;

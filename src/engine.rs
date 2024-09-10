@@ -19,9 +19,10 @@ use ratatui::{
     Frame,
 };
 use ropey::Rope;
+use tree_sitter::{InputEdit, Point};
 
 use crate::{
-    buffer::{Buffer, BufferBacking, BufferId},
+    buffer::{Action, Buffer, BufferBacking, BufferId, HistoryAction},
     command::{builtin_commands, Command, CommandArgParser},
     keybind::{Binding, Key, Keybindings},
     kill_ring::KillRing,
@@ -219,29 +220,25 @@ impl Engine {
             if matches!(state.current_mode, Mode::Insert)
                 && let KeyCode::Char(c) = key.code
             {
-                let (mut view, mut buffer) = RefMut::map_split(state, |s| {
-                    let view = s.views.get_mut(&s.active_view).unwrap();
-                    let buffer_id = view.buffer;
-                    let buffer = s.buffers.get_mut(&buffer_id).unwrap();
-                    (view, buffer)
-                });
-                let mut selections = view
-                    .selections
-                    .iter()
-                    .copied()
-                    .enumerate()
-                    .collect::<Vec<_>>();
-                selections.sort_by_key(|s| s.1.start);
+                let state = &mut *state;
+                let view = state.views.get_mut(&state.active_view).unwrap();
+                let buffer = state.buffers.get_mut(&view.buffer).unwrap();
 
-                for i in 0..selections.len() {
-                    let s = selections[i].1;
-                    buffer.contents.insert_char(s.start, c);
-                    for (_, sel) in &mut selections[i..] {
-                        sel.start += 1;
-                        sel.end += 1;
-                    }
-                    view.selections[selections[i].0] = selections[i].1;
+                let mut actions = vec![];
+
+                for i in 0..view.selections.len() {
+                    let s = view.selections[i];
+                    buffer.insert(view, &c.to_string(), s.start);
+                    actions.push(Action::TextInsertion {
+                        text: c.to_string(),
+                        start: s.start,
+                    });
                 }
+
+                buffer.history.register_edit(HistoryAction { actions });
+                buffer.recalc_tree();
+
+                view.make_selection_visisble(buffer);
             }
             return;
         };
