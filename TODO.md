@@ -19,6 +19,8 @@
     - [ ] T.ex. insert
 - [ ] Autocomplete för kommandon
 - [ ] Skapa filer genom editor
+- [ ] Fler statusmeddelanden
+  - Cleara felmeddelanden
 
 
 
