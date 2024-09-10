@@ -413,13 +413,20 @@ fn tree_sitter_out(engine: Engine) {
     let state = &mut *state;
     let view = state.views.get_mut(&state.active_view).unwrap();
     let buffer = state.buffers.get_mut(&view.buffer).unwrap();
-    
+
     for sel in &mut view.selections {
         let start = buffer.contents.char_to_byte(sel.start);
         let end = buffer.contents.char_to_byte(sel.end + 1);
-        if let Some(node) = buffer.tree.root_node().descendant_for_byte_range(start, end) {
+        if let Some(node) = buffer
+            .tree
+            .root_node()
+            .descendant_for_byte_range(start, end)
+        {
             let mut range = node.byte_range();
-            if range.start == start && range.end == end && let Some(node) = node.parent() {
+            if range.start == start
+                && range.end == end
+                && let Some(node) = node.parent()
+            {
                 range = node.byte_range();
             }
 
@@ -437,11 +444,15 @@ fn tree_sitter_in(engine: Engine) {
     let state = &mut *state;
     let view = state.views.get_mut(&state.active_view).unwrap();
     let buffer = state.buffers.get_mut(&view.buffer).unwrap();
-    
+
     for sel in &mut view.selections {
         let start = buffer.contents.char_to_byte(sel.start);
         let end = buffer.contents.char_to_byte(sel.end + 1);
-        if let Some(node) = buffer.tree.root_node().descendant_for_byte_range(start, end) {
+        if let Some(node) = buffer
+            .tree
+            .root_node()
+            .descendant_for_byte_range(start, end)
+        {
             let mut range = node.byte_range();
             if let Some(node) = node.child(0) {
                 range = node.byte_range();
@@ -461,11 +472,15 @@ fn tree_sitter_next(engine: Engine) {
     let state = &mut *state;
     let view = state.views.get_mut(&state.active_view).unwrap();
     let buffer = state.buffers.get_mut(&view.buffer).unwrap();
-    
+
     for sel in &mut view.selections {
         let start = buffer.contents.char_to_byte(sel.start);
         let end = buffer.contents.char_to_byte(sel.end + 1);
-        if let Some(node) = buffer.tree.root_node().descendant_for_byte_range(start, end) {
+        if let Some(node) = buffer
+            .tree
+            .root_node()
+            .descendant_for_byte_range(start, end)
+        {
             let mut range = node.byte_range();
             if let Some(node) = node.next_sibling() {
                 range = node.byte_range();
@@ -485,11 +500,15 @@ fn tree_sitter_prev(engine: Engine) {
     let state = &mut *state;
     let view = state.views.get_mut(&state.active_view).unwrap();
     let buffer = state.buffers.get_mut(&view.buffer).unwrap();
-    
+
     for sel in &mut view.selections {
         let start = buffer.contents.char_to_byte(sel.start);
         let end = buffer.contents.char_to_byte(sel.end + 1);
-        if let Some(node) = buffer.tree.root_node().descendant_for_byte_range(start, end) {
+        if let Some(node) = buffer
+            .tree
+            .root_node()
+            .descendant_for_byte_range(start, end)
+        {
             let mut range = node.byte_range();
             if let Some(node) = node.prev_sibling() {
                 range = node.byte_range();
