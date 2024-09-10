@@ -128,8 +128,11 @@ impl<'a> Widget for ViewWidget<'a> {
         let mut curr = buffer.contents.line_to_byte(view.vscroll);
         for (row, line) in lines.enumerate() {
             buf.set_string(0, row as _, line.to_string(), Style::new());
-            for (col, char) in line.to_string().chars().enumerate() {
+            let rope_slice = line.to_string();
+            let mut iter = rope_slice.chars().enumerate();
+            for (col, char) in &mut iter {
                 if col >= area.width.into() {
+                    curr += char.len_utf8() + iter.map(|(_, c)| c.len_utf8()).sum::<usize>();
                     break;
                 }
                 buf[(col as u16, row as u16)].fg = buffer.colors[curr];
