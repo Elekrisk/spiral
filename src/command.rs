@@ -12,7 +12,7 @@ use log::error;
 use mlua::IntoLua;
 use ratatui::buffer;
 use ropey::Rope;
-use tree_sitter::{InputEdit, Point};
+use tree_sitter::{InputEdit, Node, Point};
 
 use crate::{
     buffer::{Action, Buffer, BufferBacking, BufferId, HistoryAction},
@@ -408,6 +408,27 @@ fn list_buffers(engine: Engine) {
     buffer.contents = contents.into();
 }
 
+fn tree_sitter_out(engine: Engine) {
+    let mut state = engine.state_mut();
+    let state = &mut *state;
+    let view = state.views.get_mut(&state.active_view).unwrap();
+    let buffer = state.buffers.get_mut(&view.buffer).unwrap();
+    
+    for sel in &mut view.selections {
+        let start = buffer.contents.char_to_byte(sel.start);
+        let end = buffer.contents.char_to_byte(sel.end + 1);
+        if let Some(node) = buffer.tree.root_node().descendant_for_byte_range(start, end) {
+            let mut range = node.byte_range();
+            if range.start == start && range.end == end && let Some(node) = node.parent() {
+                range = node.byte_range();
+            }
+
+            sel.start = buffer.contents.byte_to_char(range.start);
+            sel.end = buffer.contents.byte_to_char(range.end) - 1;
+        }
+    }
+}
+
 pub fn builtin_commands() -> impl Iterator<Item = Command> {
     [
         Command::new(
@@ -659,6 +680,7 @@ pub fn builtin_commands() -> impl Iterator<Item = Command> {
             close_buffer,
         ),
         Command::new("list-buffers", "Lists the open buffers", list_buffers),
+        Command::new("tree-sitter-out", "TODO: Add desciption", tree_sitter_out)
     ]
     .into_iter()
 }

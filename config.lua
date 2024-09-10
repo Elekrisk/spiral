@@ -88,3 +88,5 @@ Editor.bind("file-tree", "enter", "file-tree-open-current")
 Editor.bind("insert", "bspc", "backspace")
 Editor.bind("insert", "enter", "insert \"\\n\"")
 Editor.bind("insert", "tab", "insert \"\\t\"")
+
+Editor.bind("normal", "A-o", "tree-sitter-out")
