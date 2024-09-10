@@ -12,7 +12,7 @@ use std::{
 use log::{error, trace};
 use mlua::UserData;
 use ratatui::{
-    crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers},
+    crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     layout::Constraint,
     style::{Modifier, Style},
     widgets::Widget,
@@ -27,6 +27,7 @@ use crate::{
     kill_ring::KillRing,
     mode::Mode,
     view::{View, ViewId, ViewWidget},
+    Options,
 };
 
 #[derive(Clone)]
@@ -37,6 +38,7 @@ pub struct Engine {
 pub struct EngineState {
     pub should_quit: bool,
     pub lua: &'static mlua::Lua,
+    pub options: Options,
     pub buffers: HashMap<BufferId, Buffer>,
     pub views: HashMap<ViewId, View>,
     pub active_view: ViewId,
@@ -63,9 +65,9 @@ pub struct Size {
 }
 
 impl Engine {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(options: Options) -> anyhow::Result<Self> {
         let s = Self {
-            state: Rc::new(RefCell::new(EngineState::new())),
+            state: Rc::new(RefCell::new(EngineState::new(options))),
         };
         crate::lua::init_lua(s.clone())?;
         Ok(s)
@@ -81,8 +83,9 @@ impl Engine {
 
     pub fn reload_config(&self) -> anyhow::Result<()> {
         let mut paths = vec![];
-        paths.push(PathBuf::from("/etc/spiral/config.lua"));
-        // paths.push(PathBuf::from("config.lua"));
+        if !self.state().options.ignore_global_config {
+            paths.push(PathBuf::from("/etc/spiral/config.lua"));
+        }
 
         let mut path = dirs::config_dir()
             .map(|mut p| {
@@ -93,6 +96,10 @@ impl Engine {
         path.push("config.lua");
         let user_config_path = path.display().to_string();
         paths.push(path);
+
+        if let Some(path) = self.state().options.config.as_ref() {
+            paths.push(path.into());
+        }
 
         paths.retain(|p| p.exists());
 
@@ -151,7 +158,7 @@ impl Engine {
         match event {
             Event::FocusGained => {}
             Event::FocusLost => {}
-            Event::Key(key) => match key.code {
+            Event::Key(key) if key.kind != KeyEventKind::Release => match key.code {
                 KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     return Ok(true)
                 }
@@ -165,6 +172,7 @@ impl Engine {
                     height: height as usize,
                 });
             }
+            _ => {}
         }
 
         Ok(self.state().should_quit)
@@ -279,7 +287,7 @@ impl Engine {
 }
 
 impl EngineState {
-    pub fn new() -> Self {
+    pub fn new(options: Options) -> Self {
         let scratch_buffer = Buffer::create_from_contents("*scratch*".into(), Rope::new());
 
         let (width, height) = ratatui::crossterm::terminal::size().unwrap();
@@ -292,6 +300,7 @@ impl EngineState {
         EngineState {
             should_quit: false,
             lua: Box::leak(Box::new(mlua::Lua::new())),
+            options,
             buffers: [(scratch_buffer.id, scratch_buffer)].into(),
             active_view: view.id,
             views: [(view.id, view)].into(),
