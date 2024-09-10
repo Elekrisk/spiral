@@ -107,7 +107,7 @@ impl Display for Key {
                     KeyModifiers::NONE => return None,
                     KeyModifiers::SHIFT => "S-",
                     KeyModifiers::SUPER => "Su-",
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 })
             })
             .collect::<String>();

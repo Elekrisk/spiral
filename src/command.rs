@@ -12,11 +12,11 @@ use log::error;
 use mlua::IntoLua;
 use ratatui::buffer;
 use ropey::Rope;
+use tree_sitter::{InputEdit, Point};
 
 use crate::{
-    buffer::{Buffer, BufferBacking, BufferId},
+    buffer::{Action, Buffer, BufferBacking, BufferId, HistoryAction},
     engine::{Engine, EngineState},
-    history::{Action, HistoryAction},
     keybind::{Binding, Key},
     kill_ring::KillRingEntry,
     selection::Selection,
@@ -151,108 +151,63 @@ fn move_char_down(engine: Engine) {
 }
 
 fn delete(engine: Engine) {
-    let state = engine.state_mut();
-    let (mut view, mut buffer) = view_buffer(state);
-
-    let mut selections = view
-        .selections
-        .iter()
-        .copied()
-        .enumerate()
-        .collect::<Vec<_>>();
-
-    selections.sort_by_key(|(_, s)| s.start);
-
-    let mut len = buffer.contents.len_chars();
-
-    let mut actions = vec![];
+    let mut state = engine.state_mut();
+    let state = &mut *state;
+    let view = state.views.get_mut(&state.active_view).unwrap();
+    let buffer = state.buffers.get_mut(&view.buffer).unwrap();
 
     let mut texts = vec![];
+    let mut actions = vec![];
 
-    for i in 0..selections.len() {
-        let s = selections[i].1;
-        let end = (s.end + 1).min(len);
-        let rem_len = end - s.start;
-        let text = buffer.contents.slice(s.start..end);
-        let text = text.to_string();
+    for i in 0..view.selections.len() {
+        let s = view.selections[i];
+
+        let text = buffer.contents.slice(s.start..=s.end).to_string();
         texts.push(text.clone());
-        let action = Action::TextDeletion {
+
+        buffer.remove(view, s.start, s.end - s.start + 1);
+        actions.push(Action::TextDeletion {
             deleted_text: text,
             start: s.start,
-            end,
-        };
-        actions.push(action);
-        buffer.contents.remove(s.start..end);
-        len -= rem_len;
-        for sel in selections[i + 1..].iter_mut().map(|(_, s)| s) {
-            sel.start = (sel.start - rem_len).max(s.start);
-            sel.end = (sel.end - rem_len).max(s.start);
-        }
-        selections[i].1.end = selections[i].1.start;
-        view.selections[selections[i].0] = selections[i].1;
+            len: s.end - s.start + 1,
+        });
     }
 
     buffer.history.register_edit(HistoryAction { actions });
+    buffer.recalc_tree();
 
-    view.make_selection_visisble(&buffer);
+    state.kill_ring.add_entry(KillRingEntry::new(texts));
 
-    drop(buffer);
-    drop(view);
-
-    engine
-        .state_mut()
-        .kill_ring
-        .add_entry(KillRingEntry::new(texts));
+    view.merge_overlapping_selections();
+    view.make_selection_visisble(buffer);
 }
 
 fn backspace(engine: Engine) {
     let state = engine.state_mut();
     let (mut view, mut buffer) = view_buffer(state);
 
-    let mut selections = view
-        .selections
-        .iter()
-        .copied()
-        .enumerate()
-        .collect::<Vec<_>>();
-
-    selections.sort_by_key(|(_, s)| s.start);
-
-    let mut len = buffer.contents.len_chars();
-
     let mut actions = vec![];
 
-    for i in 0..selections.len() {
-        let s = selections[i].1;
-        let end = (s.end + 1).min(len);
-        let rem_len = end - s.start;
-
+    for i in 0..view.selections.len() {
+        let s = view.selections[i];
         if s.start == 0 {
             continue;
         }
 
-        let start = s.start - 1;
-        let end = s.start;
+        let text = buffer.contents.slice(s.start - 1..s.start).to_string();
+        buffer.remove(&mut view, s.start - 1, 1);
 
-        let text = buffer.contents.slice(start..end);
-        let text = text.to_string();
-        let action = Action::TextDeletion {
+        actions.push(Action::TextDeletion {
             deleted_text: text,
-            start: s.start,
-            end,
-        };
-        actions.push(action);
-        buffer.contents.remove(start..end);
-        len -= rem_len;
-        for sel in selections[i..].iter_mut().map(|(_, s)| s) {
-            sel.start = sel.start.saturating_sub(1);
-            sel.end = sel.end.saturating_sub(1);
-        }
-        view.selections[selections[i].0] = selections[i].1;
+            start: s.start - 1,
+            len: 1,
+        });
     }
 
     buffer.history.register_edit(HistoryAction { actions });
+    buffer.recalc_tree();
 
+    view.merge_overlapping_selections();
     view.make_selection_visisble(&buffer);
 }
 
@@ -260,34 +215,20 @@ fn insert(engine: Engine, text: String) {
     let state = engine.state_mut();
     let (mut view, mut buffer) = view_buffer(state);
 
-    let mut selections = view
-        .selections
-        .iter()
-        .copied()
-        .enumerate()
-        .collect::<Vec<_>>();
-
-    selections.sort_by_key(|(_, s)| s.start);
-
     let mut actions = vec![];
 
-    for i in 0..selections.len() {
-        let s = selections[i].1;
-        let text_len = text.len();
-        buffer.contents.insert(s.start, &text);
+    for i in 0..view.selections.len() {
+        let s = view.selections[i];
+        buffer.insert(&mut view, &text, s.start);
         let action = Action::TextInsertion {
             text: text.clone(),
             start: s.start,
         };
         actions.push(action);
-        for sel in selections[i..].iter_mut().map(|(_, s)| s) {
-            sel.start += text_len;
-            sel.end += text_len;
-        }
-        view.selections[selections[i].0] = selections[i].1;
     }
 
     buffer.history.register_edit(HistoryAction { actions });
+    buffer.recalc_tree();
 
     view.make_selection_visisble(&buffer);
 }
@@ -338,47 +279,21 @@ fn goto_end(engine: Engine, collapse: bool) {
 }
 
 fn undo(engine: Engine) {
-    let buffer_id = {
-        let (_, buffer) = view_buffer(engine.state_mut());
-        let buffer_id = buffer.id;
-        let (mut history, mut text) =
-            RefMut::map_split(buffer, |b| (&mut b.history, &mut b.contents));
-        history.undo(&mut text);
-        buffer_id
-    };
+    let mut state = engine.state_mut();
+    let state = &mut *state;
+    let view = state.views.get_mut(&state.active_view).unwrap();
+    let buffer = state.buffers.get_mut(&view.buffer).unwrap();
 
-    let state = engine.state_mut();
-    let (mut views, buffers) = views_buffers(state);
-    let buffer = buffers.get(&buffer_id).unwrap();
-
-    for view in views.values_mut().filter(|v| v.buffer == buffer_id) {
-        for sel in &mut view.selections {
-            sel.make_valid(&buffer.contents);
-        }
-        view.make_selection_visisble(&buffer);
-    }
+    buffer.undo(view);
 }
 
 fn redo(engine: Engine) {
-    let buffer_id = {
-        let (_, buffer) = view_buffer(engine.state_mut());
-        let buffer_id = buffer.id;
-        let (mut history, mut text) =
-            RefMut::map_split(buffer, |b| (&mut b.history, &mut b.contents));
-        history.redo(&mut text);
-        buffer_id
-    };
+    let mut state = engine.state_mut();
+    let state = &mut *state;
+    let view = state.views.get_mut(&state.active_view).unwrap();
+    let buffer = state.buffers.get_mut(&view.buffer).unwrap();
 
-    let state = engine.state_mut();
-    let (mut views, buffers) = views_buffers(state);
-    let buffer = buffers.get(&buffer_id).unwrap();
-
-    for view in views.values_mut().filter(|v| v.buffer == buffer_id) {
-        for sel in &mut view.selections {
-            sel.make_valid(&buffer.contents);
-        }
-        view.make_selection_visisble(&buffer);
-    }
+    buffer.redo(view);
 }
 
 fn show_kill_ring(engine: Engine) {
@@ -422,24 +337,14 @@ fn copy_kill_ring(engine: Engine) {
 
 fn paste_kill_ring(engine: Engine, before: bool) {
     let mut state = engine.state_mut();
+    let state = &mut *state;
 
     if state.kill_ring.entries.is_empty() {
         return;
     }
 
-    let state = &mut *state;
-    let active_view = state.active_view;
-    let view = state.views.get_mut(&active_view).unwrap();
+    let view = state.views.get_mut(&state.active_view).unwrap();
     let buffer = state.buffers.get_mut(&view.buffer).unwrap();
-
-    let mut selections = view
-        .selections
-        .iter()
-        .copied()
-        .enumerate()
-        .collect::<Vec<_>>();
-
-    selections.sort_by_key(|(_, s)| s.start);
 
     let mut actions = vec![];
 
@@ -447,29 +352,21 @@ fn paste_kill_ring(engine: Engine, before: bool) {
         .kill_ring
         .get()
         .unwrap()
-        .get_for_cursor_count(selections.len());
+        .get_for_cursor_count(view.selections.len());
 
-    for i in 0..selections.len() {
-        let s = selections[i].1;
-        let insertion = (if before { s.start } else { s.end + 1 }).min(buffer.contents.len_chars());
-        let text_len = texts[0].len();
-        buffer.contents.insert(insertion, texts[0]);
+    for i in 0..view.selections.len() {
+        let s = view.selections[i];
+        let start = (if before { s.start } else { s.end + 1 }).min(buffer.contents.len_chars());
+        buffer.insert(view, texts[i], start);
         let action = Action::TextInsertion {
             text: texts[0].to_string(),
-            start: insertion,
+            start,
         };
         actions.push(action);
-        for sel in selections[i + if before { 0 } else { 1 }..]
-            .iter_mut()
-            .map(|(_, s)| s)
-        {
-            sel.start += text_len;
-            sel.end += text_len;
-        }
-        view.selections[selections[i].0] = selections[i].1;
     }
 
     buffer.history.register_edit(HistoryAction { actions });
+    buffer.recalc_tree();
 
     view.make_selection_visisble(buffer);
 }

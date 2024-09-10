@@ -44,6 +44,7 @@ pub struct View {
 
     pub size: Size,
 
+    /// Keep this sorted by start index pls
     pub selections: Vec<Selection>,
 }
 
@@ -58,6 +59,28 @@ impl View {
             hscroll: 0,
             size,
             selections: vec![Selection::new(id)],
+        }
+    }
+
+    pub fn sort_selections(&mut self) {
+        self.selections.sort_by_key(|s| s.start);
+    }
+
+    pub fn merge_overlapping_selections(&mut self) {
+        self.sort_selections();
+
+        let mut active = 0;
+        let mut cursor = 1;
+        while cursor < self.selections.len() {
+            let [a, s] = self.selections.get_many_mut([active, cursor]).unwrap();
+            if s.start <= a.end {
+                a.start = a.start.min(s.start);
+                a.end = a.end.max(s.end);
+                self.selections.remove(cursor);
+            } else {
+                active += 1;
+                cursor += 1;
+            }
         }
     }
 
@@ -102,16 +125,16 @@ impl<'a> Widget for ViewWidget<'a> {
         };
         let lines = lines.take(area.height as usize);
 
-        let mut curr = buffer.contents.line_to_char(view.vscroll);
+        let mut curr = buffer.contents.line_to_byte(view.vscroll);
         for (row, line) in lines.enumerate() {
             buf.set_string(0, row as _, line.to_string(), Style::new());
-            for (col, characters) in line.to_string().as_bytes().into_iter().enumerate() {
+            for (col, char) in line.to_string().chars().enumerate() {
                 if col >= area.width.into() {
                     break;
                 }
-                buf[(col as u16, row as u16)].fg = buffer.colors[col + curr];
+                buf[(col as u16, row as u16)].fg = buffer.colors[curr];
+                curr += char.len_utf8();
             }
-            curr += line.len_chars();
         }
 
         let text = &buffer.contents;

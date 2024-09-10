@@ -1,11 +1,10 @@
 use std::{fmt::Display, str::FromStr};
 
-
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Mode {
     Normal,
     Insert,
-    Custom(String)
+    Custom(String),
 }
 
 impl FromStr for Mode {
@@ -15,7 +14,7 @@ impl FromStr for Mode {
         match s.to_lowercase().as_str() {
             "normal" => Ok(Mode::Normal),
             "insert" => Ok(Mode::Insert),
-            o => Ok(Mode::Custom(o.into()))
+            o => Ok(Mode::Custom(o.into())),
         }
     }
 }

@@ -4,11 +4,9 @@ pub struct KillRing {
 
 impl KillRing {
     pub fn new() -> Self {
-        Self {
-            entries: vec![]
-        }
+        Self { entries: vec![] }
     }
-    
+
     pub fn add_entry(&mut self, entry: KillRingEntry) {
         self.entries.push(entry);
     }
