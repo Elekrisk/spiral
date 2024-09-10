@@ -29,6 +29,7 @@ impl<'lua> FromLua<'lua> for BufferId {
 pub struct Buffer {
     pub id: BufferId,
     pub name: String,
+    pub view_count: usize,
     pub contents: ropey::Rope,
     pub history: History,
 
@@ -41,6 +42,7 @@ impl Buffer {
         Self {
             id,
             name,
+            view_count: 0,
             contents: rope,
             history: History::new(),
             backing: BufferBacking::None,

@@ -280,21 +280,18 @@ impl Engine {
 
 impl EngineState {
     pub fn new() -> Self {
-        let scratch_buffer = Buffer::create_from_contents("*scratch*".into(), Rope::new());
-
         let (width, height) = ratatui::crossterm::terminal::size().unwrap();
         let size = Size {
             width: width as usize,
             height: height as usize,
         };
-        let view = View::new(scratch_buffer.id, size);
 
-        EngineState {
+        let mut state = EngineState {
             should_quit: false,
             lua: Box::leak(Box::new(mlua::Lua::new())),
-            buffers: [(scratch_buffer.id, scratch_buffer)].into(),
-            active_view: view.id,
-            views: [(view.id, view)].into(),
+            buffers: HashMap::new(),
+            active_view: ViewId(usize::MAX),
+            views: HashMap::new(),
             keybinds: Keybindings {
                 binds: HashMap::new(),
             },
@@ -305,10 +302,14 @@ impl EngineState {
             error_log: vec![],
             size,
             kill_ring: KillRing::new(),
-        }
+        };
+        let buffer = state.create_buffer();
+        state.active_view = state.create_view(buffer);
+        state
     }
 
     pub fn create_view(&mut self, buffer: BufferId) -> ViewId {
+        self.buffers.get_mut(&buffer).unwrap().view_count += 1;
         let size = Size {
             width: self.size.width,
             height: self.size.height.saturating_sub(2),
