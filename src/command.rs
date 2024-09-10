@@ -474,6 +474,43 @@ fn paste_kill_ring(engine: Engine, before: bool) {
     view.make_selection_visisble(buffer);
 }
 
+fn close_buffer(engine: Engine) {
+    let mut state = engine.state_mut();
+    let state = &mut *state;
+    let view = state.active_view;
+    let view = state.views.remove(&view).unwrap();
+    let buffer = state.buffers.get_mut(&view.buffer).unwrap();
+    buffer.view_count -= 1;
+    if buffer.view_count == 0 {
+        state.buffers.remove(&view.buffer).unwrap();
+    }
+
+    state.active_view = match state.views.keys().next() {
+        Some(id) => *id,
+        None => {
+            let buffer = state.create_buffer();
+            state.create_view(buffer)
+        }
+    }
+}
+
+fn list_buffers(engine: Engine) {
+    let mut state = engine.state_mut();
+    let state = &mut *state;
+    let buffer_id = state.create_buffer();
+    let view_id = state.create_view(buffer_id);
+    state.active_view = view_id;
+
+    let mut contents = String::new();
+    for (id, buffer) in &state.buffers {
+        use std::fmt::Write;
+        writeln!(&mut contents, "{}: {}", id.0, buffer.name).unwrap();
+    }
+    let buffer = state.buffers.get_mut(&buffer_id).unwrap();
+
+    buffer.contents = contents.into();
+}
+
 pub fn builtin_commands() -> impl Iterator<Item = Command> {
     [
         Command::new(
@@ -716,13 +753,15 @@ pub fn builtin_commands() -> impl Iterator<Item = Command> {
                 paste_kill_ring(engine, before);
             },
         ),
+        Command::new("copy-kill-ring", "Copy selection to kill ring", |engine| {
+            copy_kill_ring(engine);
+        }),
         Command::new(
-            "copy-kill-ring",
-            "Copy selection to kill ring",
-            |engine| {
-                copy_kill_ring(engine);
-            },
+            "close-buffer",
+            "Closes the current buffer view",
+            close_buffer,
         ),
+        Command::new("list-buffers", "Lists the open buffers", list_buffers),
     ]
     .into_iter()
 }

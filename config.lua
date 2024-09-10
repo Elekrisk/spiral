@@ -76,6 +76,7 @@ Editor.register_command("file-tree-open-current", "Open currently hovered file",
     local sel = view:get_selections()[1]
     local path = sel:get_text()
     local path = path:gsub("%s+", "")
+    Editor.exec("close-buffer")
     Editor.exec("enter-mode normal")
     Editor.open_file(path)
 end)
