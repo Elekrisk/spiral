@@ -106,6 +106,9 @@ impl<'a> Widget for ViewWidget<'a> {
         for (row, line) in lines.enumerate() {
             buf.set_string(0, row as _, line.to_string(), Style::new());
             for (col, characters) in line.to_string().as_bytes().into_iter().enumerate() {
+                if col >= area.width.into() {
+                    break;
+                }
                 buf[(col as u16, row as u16)].fg = buffer.colors[col + curr];
             }
             curr += line.len_chars();
