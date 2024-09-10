@@ -2,11 +2,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use mlua::FromLua;
 use ratatui::{
-    style::{Color, Modifier, Style},
+    style::{Color, Modifier, Style, Styled, Stylize},
     text::ToText,
     widgets::Widget,
 };
 use ropey::Rope;
+use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter};
 
 use crate::{
     buffer::{Buffer, BufferId},
@@ -49,6 +50,7 @@ pub struct View {
 impl View {
     pub fn new(buffer: BufferId, size: Size) -> Self {
         let id = ViewId::generate();
+
         Self {
             id,
             buffer,
@@ -100,8 +102,13 @@ impl<'a> Widget for ViewWidget<'a> {
         };
         let lines = lines.take(area.height as usize);
 
+        let mut curr = buffer.contents.line_to_char(view.vscroll);
         for (row, line) in lines.enumerate() {
             buf.set_string(0, row as _, line.to_string(), Style::new());
+            for (col, characters) in line.to_string().as_bytes().into_iter().enumerate() {
+                buf[(col as u16, row as u16)].fg = buffer.colors[col + curr];
+            }
+            curr += line.len_chars();
         }
 
         let text = &buffer.contents;
