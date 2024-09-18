@@ -1,6 +1,6 @@
 use std::{fmt::Display, str::FromStr};
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Mode {
     Normal,
     Insert,
@@ -22,9 +22,9 @@ impl FromStr for Mode {
 impl Display for Mode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Mode::Normal => f.write_str("NORMAL"),
-            Mode::Insert => f.write_str("INSERT"),
-            Mode::Custom(mode) => f.write_str(&mode.to_uppercase()),
+            Mode::Normal => f.write_str("normal"),
+            Mode::Insert => f.write_str("insert"),
+            Mode::Custom(mode) => f.write_str(&mode.to_lowercase()),
         }
     }
 }

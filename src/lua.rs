@@ -1,13 +1,13 @@
-use std::{cell::RefCell, clone, rc::Rc};
+use std::{cell::RefCell, clone, collections::HashMap, rc::Rc};
 
 use log::debug;
-use mlua::{FromLua, MultiValue, Table, UserData};
+use mlua::{FromLua, Function, MultiValue, Table, UserData};
 use ropey::Rope;
 
 use crate::{
     buffer::{Buffer, BufferId},
     engine::{self, Engine},
-    keybind::{parse_key_sequence, Key},
+    keybind::{parse_key_sequence, Binding, Key},
     mode::Mode,
     selection::Selection,
     view::{View, ViewId},
@@ -17,7 +17,7 @@ pub fn init_lua(engine: Engine) -> anyhow::Result<()> {
     let lua = engine.state.borrow().lua;
 
     lua.set_app_data(engine.clone());
-
+    
     let engine_table = lua.create_table()?;
 
     macro_rules! fix_type {
@@ -179,6 +179,41 @@ pub fn init_lua(engine: Engine) -> anyhow::Result<()> {
         })?,
     )?;
 
+    fn get_bindings(lua: &mlua::Lua, e: Engine) -> mlua::Result<mlua::Table> {
+        let state = e.state();
+        let table = lua.create_table()?;
+
+        fn map_to_mode<'lua>(
+            lua: &'lua mlua::Lua,
+            map: &HashMap<Key, Binding>,
+        ) -> mlua::Result<mlua::Table<'lua>> {
+            let table = lua.create_table()?;
+            for (key, binding) in map {
+                match binding {
+                    Binding::Group(map) => {
+                        let map = map_to_mode(lua, map)?;
+                        table.raw_set(key.to_string(), map)?;
+                    }
+                    Binding::Commands(cmds) => table.raw_set(key.to_string(), cmds.join("; "))?,
+                }
+            }
+            Ok(table)
+        }
+
+        for (mode, map) in &state.keybinds.binds {
+            table.raw_set(mode.to_string(), map_to_mode(lua, map)?)?;
+        }
+
+        Ok(table)
+    }
+
+    engine_table.raw_set(
+        "get_bindings",
+        lua.create_function(|lua, ()| {
+            get_bindings(lua, lua.app_data_ref::<Engine>().unwrap().clone())
+        })?,
+    )?;
+
     methods! {
         fn exec(e, cmd: String) {
             e.execute_command(&cmd).map_err(mlua::Error::external)?;
@@ -210,6 +245,11 @@ pub fn init_lua(engine: Engine) -> anyhow::Result<()> {
             let views = e.state().views.keys().copied().map(|id| ViewRef { id }).collect::<Vec<_>>();
             views
         }
+
+        fn event_hook(e, hook: Function) {
+            e.state_mut().event_hooks.push(hook);
+        }
+
     }
 
     lua.globals().raw_set("Editor", engine_table)?;

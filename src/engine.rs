@@ -10,9 +10,9 @@ use std::{
 };
 
 use log::{error, trace};
-use mlua::UserData;
+use mlua::{Function, UserData};
 use ratatui::{
-    crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+    crossterm::event::{Event as TermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     layout::Constraint,
     style::{Modifier, Style},
     widgets::Widget,
@@ -24,6 +24,7 @@ use tree_sitter::{InputEdit, Point};
 use crate::{
     buffer::{Action, Buffer, BufferBacking, BufferId, HistoryAction},
     command::{builtin_commands, Command, CommandArgParser},
+    event::{Event, EventKind},
     keybind::{Binding, Key, Keybindings},
     kill_ring::KillRing,
     mode::Mode,
@@ -57,6 +58,8 @@ pub struct EngineState {
     pub size: Size,
 
     pub kill_ring: KillRing,
+    pub event_queue: Vec<Event>,
+    pub event_hooks: Vec<Function<'static>>,
 }
 
 #[derive(Clone, Copy)]
@@ -96,10 +99,12 @@ impl Engine {
             .unwrap_or(PathBuf::from("."));
         path.push("config.lua");
         let user_config_path = path.display().to_string();
-        paths.push(path);
-
+        
         if let Some(path) = self.state().options.config.as_ref() {
             paths.push(path.into());
+        }
+        else {
+            paths.push(path);
         }
 
         paths.retain(|p| p.exists());
@@ -155,19 +160,19 @@ impl Engine {
         Ref::filter_map(self.state(), |s| s.view(id)).ok()
     }
 
-    pub fn event(&self, event: Event) -> anyhow::Result<bool> {
+    pub fn event(&self, event: TermEvent) -> anyhow::Result<bool> {
         match event {
-            Event::FocusGained => {}
-            Event::FocusLost => {}
-            Event::Key(key) if key.kind != KeyEventKind::Release => match key.code {
+            TermEvent::FocusGained => {}
+            TermEvent::FocusLost => {}
+            TermEvent::Key(key) if key.kind != KeyEventKind::Release => match key.code {
                 KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     return Ok(true)
                 }
                 _ => self.key_event(key),
             },
-            Event::Mouse(_) => {}
-            Event::Paste(_) => {}
-            Event::Resize(width, height) => {
+            TermEvent::Mouse(_) => {}
+            TermEvent::Paste(_) => {}
+            TermEvent::Resize(width, height) => {
                 self.state_mut().resize(Size {
                     width: width as usize,
                     height: height as usize,
@@ -207,7 +212,7 @@ impl Engine {
             if !state.key_queue.is_empty() {
                 state.key_queue.clear();
             } else if !matches!(state.current_mode, Mode::Normal) {
-                state.current_mode = Mode::Normal;
+                state.enter_mode(Mode::Normal);
             }
             return;
         }
@@ -278,6 +283,19 @@ impl Engine {
         action(self.clone(), args)
     }
 
+    pub fn process_events(&self) -> anyhow::Result<()> {
+        let events = std::mem::take(&mut self.state_mut().event_queue);
+        let handlers = self.state().event_hooks.clone();
+
+        for event in events {
+            for handler in &handlers {
+                handler.call::<_, ()>(event.clone())?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn draw(&self, frame: &mut Frame) {
         self.state().draw(frame);
     }
@@ -308,6 +326,8 @@ impl EngineState {
             error_log: vec![],
             size,
             kill_ring: KillRing::new(),
+            event_queue: vec![],
+            event_hooks: vec![],
         };
         let buffer = state.create_buffer();
         state.active_view = state.create_view(buffer);
@@ -356,6 +376,22 @@ impl EngineState {
 
     pub fn view(&self, id: ViewId) -> Option<&View> {
         self.views.get(&id)
+    }
+
+    pub fn queue_event(&mut self, event: Event) {
+        self.event_queue.push(event);
+    }
+
+    pub fn enter_mode(&mut self, mode: Mode) {
+        if mode != self.current_mode {
+            self.event_queue.push(Event {
+                kind: EventKind::ModeTransition {
+                    old: self.current_mode.clone(),
+                    new: mode.clone(),
+                },
+            });
+            self.current_mode = mode;
+        }
     }
 
     pub fn resize(&mut self, size: Size) {

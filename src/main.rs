@@ -9,6 +9,7 @@
 mod buffer;
 mod command;
 mod engine;
+mod event;
 mod keybind;
 mod kill_ring;
 mod lua;
@@ -84,7 +85,7 @@ fn main() {
     });
 
     enable_raw_mode().unwrap();
-    stdout()
+    let _ = stdout()
         .execute(EnterAlternateScreen)
         .unwrap()
         .execute(PushKeyboardEnhancementFlags(
@@ -98,6 +99,7 @@ fn main() {
             if exit {
                 break;
             }
+            engine.process_events().unwrap();
         }
 
         terminal.draw(|frame| engine.draw(frame)).unwrap();

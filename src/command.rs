@@ -673,7 +673,7 @@ pub fn builtin_commands() -> impl Iterator<Item = Command> {
             "Enter given mode",
             |engine: Engine, mode: String| {
                 let mode = mode.parse()?;
-                engine.state_mut().current_mode = mode;
+                engine.state_mut().enter_mode(mode);
 
                 Ok(())
             },
